@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: AI-API-TOOL
+    runtime: python
+    plan: free
+    buildCommand: bash build.sh
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
