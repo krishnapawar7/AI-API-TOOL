@@ -9,7 +9,13 @@ A REST API built with **FastAPI** that exposes three AI-powered endpoints, backe
 Built as part of the AI/ML Intern Round 1 assignment (Python & API Development).
 
 ---
+## Live Application
 
+👉 https://ai-api-tool.onrender.com/
+
+[Open App](https://ai-api-tool.onrender.com/)
+
+---
 ## Features
 
 - Clean, layered project structure (routers → services → schemas/config)
