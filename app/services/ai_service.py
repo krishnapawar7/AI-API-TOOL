@@ -6,6 +6,7 @@ live in one place.
 """
 
 import logging
+import time
 
 from google import genai
 
@@ -16,23 +17,54 @@ logger = logging.getLogger(__name__)
 
 _client = genai.Client(api_key=settings.gemini_api_key)
 
+RETRYABLE_ERRORS = (
+    "503",
+    "UNAVAILABLE",
+    "RATE_LIMIT",
+    "rate limit",
+    "temporarily unavailable",
+    "timeout",
+)
+MAX_RETRIES = 3
+BASE_BACKOFF_SECONDS = 1
+
+
+def _is_retryable_error(exc: Exception) -> bool:
+    message = str(exc).upper()
+    return any(token in message for token in RETRYABLE_ERRORS)
+
 
 def _call_gemini(prompt: str) -> str:
     """Single shared entry point for all Gemini calls, with consistent
     error handling so routers don't need to know about the SDK at all."""
-    try:
-        response = _client.models.generate_content(
-            model=settings.gemini_model,
-            contents=prompt,
-        )
-        if not response or not response.text:
-            raise AIServiceError("AI provider returned an empty response.")
-        return response.text.strip()
-    except AIServiceError:
-        raise
-    except Exception as exc:
-        logger.exception("Gemini API call failed")
-        raise AIServiceError(f"Failed to get a response from the AI provider: {exc}")
+    backoff = BASE_BACKOFF_SECONDS
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            response = _client.models.generate_content(
+                model=settings.gemini_model,
+                contents=prompt,
+            )
+            if not response or not response.text:
+                raise AIServiceError("AI provider returned an empty response.")
+            return response.text.strip()
+        except Exception as exc:
+            if attempt < MAX_RETRIES and _is_retryable_error(exc):
+                logger.warning(
+                    "Gemini request failed (attempt %s/%s): %s. Retrying in %s seconds.",
+                    attempt,
+                    MAX_RETRIES,
+                    exc,
+                    backoff,
+                )
+                time.sleep(backoff)
+                backoff *= 2
+                continue
+            logger.exception("Gemini API call failed")
+            if isinstance(exc, AIServiceError):
+                raise
+            raise AIServiceError(f"Failed to get a response from the AI provider: {exc}")
+
+    raise AIServiceError("Gemini retry loop exited without a response.")
 
 
 def summarize_text(text: str, max_words: int) -> str:
